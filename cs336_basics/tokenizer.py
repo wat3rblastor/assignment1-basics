@@ -4,7 +4,6 @@ import regex as re
 from typing import BinaryIO
 from collections import defaultdict
 
-# First, let's implemented without assuming chunking
 
 def find_chunk_boundaries(
     file: BinaryIO,
@@ -53,7 +52,7 @@ def find_chunk_boundaries(
     return sorted(set(chunk_boundaries))
   
 
-def call_find_chunk_boundaries(input_path: str) -> list[int]:
+def call_find_chunk_boundaries(input_path: str | os.PathLike) -> list[int]:
   with open(input_path, "rb") as f:
     num_processes = 4
     boundaries = find_chunk_boundaries(f, num_processes, b"<|endoftext|>")
@@ -65,7 +64,7 @@ def initialize_vocabulary(special_tokens: list[str]) -> dict[int, bytes]:
   vocabulary = {}
   
   for i in range(len(special_tokens)):
-    vocabulary[i] = special_tokens[i]
+    vocabulary[i] = special_tokens[i].encode("utf-8")
     
   num_special_tokens = len(special_tokens)
   
@@ -75,8 +74,8 @@ def initialize_vocabulary(special_tokens: list[str]) -> dict[int, bytes]:
   return vocabulary
 
 
-def pretokenize(input_path: str, chunk_boundaries: list[int]
-) -> dict[tuple[str, ...], int]:
+def pretokenize(input_path: str | os.PathLike, chunk_boundaries: list[int], special_tokens: list[str]
+) -> dict[tuple[bytes, ...], int]:
   pretokens = defaultdict(int)
   
   PAT = r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
@@ -85,18 +84,27 @@ def pretokenize(input_path: str, chunk_boundaries: list[int]
   with open(input_path, "rb") as f:
     for start, end in zip(chunk_boundaries[:-1], chunk_boundaries[1:]):
       f.seek(start)
-      chunk = f.read(end - start).decode("utf-8", errors="ignore") # this is a string
+      raw_chunk = f.read(end - start).decode("utf-8", errors="ignore") # this is a string
       
-      matches = re.finditer(PAT, chunk)
+      # Remove special tokens
+      if special_tokens:
+        special_pattern = "|".join([re.escape(special_token) for special_token in special_tokens])
+        chunks = re.split(special_pattern, raw_chunk)
+      else:
+        chunks = [raw_chunk]
       
-      for match in matches:
-        pretokens[match.group(0)] += 1
+      for chunk in chunks:
+        matches = re.finditer(PAT, chunk)
         
+        for match in matches:
+          # I HAVE TO CHANGE PRETOKENS TO BYTES
+          pretokens[tuple(bytes([b]) for b in match.group(0).encode("utf-8"))] += 1
+          
   return pretokens
 
 
-def get_stats(pretokens: dict[tuple[str, ...], int]
-) -> dict[tuple[str, str], int]:
+def get_stats(pretokens: dict[tuple[bytes, ...], int]
+) -> dict[tuple[bytes, bytes], int]:
   pairs = defaultdict(int)
   
   for pretoken, freq in pretokens.items():
@@ -105,36 +113,48 @@ def get_stats(pretokens: dict[tuple[str, ...], int]
       
   return pairs
 
+
 # Naive merge (for now)
-def merge(pretokens: dict[tuple[str, ...], int], cur_vocab_size: int, vocabulary: dict[int, bytes]
-) -> tuple[bytes, bytes]:  
-  pairs = get_stats(pretokens)
+def merge(pretokens: dict[tuple[bytes, ...], int], vocabulary: dict[int, bytes], init_vocab_size: int, vocab_size: int
+) -> list[tuple[bytes, bytes]]:  
+  merges = []
   
-  # Check if this gives the lexicographically smallest or largest
-  max_pair = max(pairs, key=lambda p: (pairs[p], p))
-  
-  merged_token = "".join(max_pair)
-  vocabulary[cur_vocab_size + 1] = merged_token.encode("utf-8")
-  
-  new_pretokens = {}
-  for pretoken, freq in pretokens.items():
-    new_pretoken = []
-    for i in range(len(pretoken) - 1):
-      if pretoken[i] == max_pair[0] and pretoken[i+1] == max_pair[1]:
-        new_pretoken.append(merged_token)
-        i += 1
-      else:
-        new_pretoken.append(pretoken[i])
-        
-    new_pretokens[tuple(new_pretoken)] = freq
+  for cur_vocab_idx in range(init_vocab_size, vocab_size):
+    # Get most frequent pair
+    pairs = get_stats(pretokens)    
+    max_pair = max(pairs, key=lambda p: (pairs[p], p))
     
-  pretokens = new_pretokens
-  
-  return max_pair[0].encode("utf-8"), max_pair[1].encode("utf-8")
+    # Add pair to merges
+    merges.append(max_pair)
+    
+    # Add to vocabulary
+    new_symbol = max_pair[0] + max_pair[1]
+    vocabulary[cur_vocab_idx] = new_symbol
+    
+    # Merge pair for pretokens
+    new_pretokens = defaultdict(int)
+    for pretoken, freq in pretokens.items():
+      new_pretoken = []
+      n = len(pretoken)
+      
+      i = 0
+      while i < n:
+        if i < n - 1 and pretoken[i] == max_pair[0] and pretoken[i+1] == max_pair[1]:
+          new_pretoken.append(new_symbol)
+          i += 2
+        else:
+          new_pretoken.append(pretoken[i])
+          i += 1
+          
+      new_pretokens[tuple(new_pretoken)] += freq
+      
+    pretokens = new_pretokens
+
+  return merges
 
 
 def run_train_bpe(
-    input_path: str,
+    input_path: str | os.PathLike,
     vocab_size: int,
     special_tokens: list[str],
 ) -> tuple[dict[int, bytes], list[tuple[bytes, bytes]]]:
@@ -144,13 +164,10 @@ def run_train_bpe(
     chunk_boundaries = call_find_chunk_boundaries(input_path)
     
     vocabulary = initialize_vocabulary(special_tokens)
-    cur_vocab_size = len(vocabulary)
-    
-    merges = []
-    
-    pretokens = pretokenize(input_path, chunk_boundaries)
-    
-    for _ in range(cur_vocab_size, vocab_size + 1):
-      merges.append(merge(pretokens, cur_vocab_size, vocabulary))
+    init_vocab_size = len(vocabulary)  
+
+    pretokens = pretokenize(input_path, chunk_boundaries, special_tokens)
+  
+    merges = merge(pretokens, vocabulary, init_vocab_size, vocab_size)
     
     return vocabulary, merges
