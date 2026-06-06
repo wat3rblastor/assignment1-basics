@@ -1,6 +1,8 @@
 import os
 import regex as re
+import json
 
+from pathlib import Path
 from multiprocessing import Pool
 from typing import BinaryIO
 from collections import defaultdict
@@ -156,7 +158,7 @@ def merge(pretokens: dict[tuple[bytes, ...], int], vocabulary: dict[int, bytes],
     vocabulary[cur_vocab_idx] = new_symbol
     
     # Update pretokens, pair_counts, pair_to_pretokens
-    for pretoken in pair_to_pretokens[max_pair]:
+    for pretoken in list(pair_to_pretokens[max_pair]):
       if pretoken not in pretokens:
         continue
       
@@ -181,9 +183,10 @@ def merge(pretokens: dict[tuple[bytes, ...], int], vocabulary: dict[int, bytes],
       
       # Update pair_counts
       for pair in zip(pretoken[:-1], pretoken[1:]):
-        pair_counts[pair] -= freq
-        if pair in pair_counts and pair_counts[pair] == 0:
-          del pair_counts[pair]
+        if pair in pair_counts:
+          pair_counts[pair] -= freq
+          if pair_counts[pair] == 0:
+            del pair_counts[pair]
         
       for pair in zip(new_pretoken[:-1], new_pretoken[1:]):
         pair_counts[pair] += freq
@@ -216,9 +219,28 @@ def run_train_bpe(
     vocabulary = initialize_vocabulary(special_tokens)
     init_vocab_size = len(vocabulary)  
 
-    num_proceses = max((os.cpu_count() or 1) - 1, 1)
-    pretokens = pretokenize(input_path, chunk_boundaries, special_tokens, 4)
+    num_processes = max((os.cpu_count() or 1) - 1, 1)
+    pretokens = pretokenize(input_path, chunk_boundaries, special_tokens, num_processes)
   
     merges = merge(pretokens, vocabulary, init_vocab_size, vocab_size)
     
     return vocabulary, merges
+  
+  
+if __name__ == "__main__":
+  ROOT = Path(__file__).resolve().parents[1]
+
+  input_path = ROOT / "data" / "TinyStoriesV2-GPT4-train.txt"
+  vocab_path = ROOT / "tinystories_vocab.json"
+  merges_path = ROOT / "tinystories_merge.txt"
+
+  special_tokens = ["<|endoftext|>"]
+  vocabulary, merges = run_train_bpe(input_path, 10000, special_tokens)
+
+  
+  with vocab_path.open("w", encoding="utf-8") as f:
+    json.dump({k: v.hex() for k, v in vocabulary.items()}, f, indent=2)
+    
+  with merges_path.open("w", encoding="utf-8") as f:
+    for left, right in merges:
+      f.write(f"{left} {right}\n")
