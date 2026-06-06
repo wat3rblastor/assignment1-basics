@@ -97,32 +97,36 @@ def pretokenize(input_path: str | os.PathLike, chunk_boundaries: list[int], spec
         matches = re.finditer(PAT, chunk)
         
         for match in matches:
-          # I HAVE TO CHANGE PRETOKENS TO BYTES
           pretokens[tuple(bytes([b]) for b in match.group(0).encode("utf-8"))] += 1
           
   return pretokens
 
 
 def get_stats(pretokens: dict[tuple[bytes, ...], int]
-) -> dict[tuple[bytes, bytes], int]:
-  pairs = defaultdict(int)
+) -> tuple[dict[tuple[bytes, bytes], int], dict[tuple[bytes, bytes], list[tuple[bytes, ...]]]]:
+  pair_counts = defaultdict(int)
+  pair_to_pretokens = defaultdict(list)
   
   for pretoken, freq in pretokens.items():
     for i in range(len(pretoken) - 1):
-      pairs[pretoken[i], pretoken[i+1]] += freq
+      pair = (pretoken[i], pretoken[i+1])
       
-  return pairs
+      pair_counts[pair] += freq
+      pair_to_pretokens[pair].append(tuple(pretoken))
+      
+  return pair_counts, pair_to_pretokens
 
 
-# Naive merge (for now)
 def merge(pretokens: dict[tuple[bytes, ...], int], vocabulary: dict[int, bytes], init_vocab_size: int, vocab_size: int
 ) -> list[tuple[bytes, bytes]]:  
   merges = []
+  pair_counts, pair_to_pretokens = get_stats(pretokens)
   
   for cur_vocab_idx in range(init_vocab_size, vocab_size):
-    # Get most frequent pair
-    pairs = get_stats(pretokens)    
-    max_pair = max(pairs, key=lambda p: (pairs[p], p))
+    pretoken_to_new_pretoken = {}
+    
+    # Get most frequent pair  
+    max_pair = max(pair_counts, key=lambda p: (pair_counts[p], p))
     
     # Add pair to merges
     merges.append(max_pair)
@@ -131,24 +135,50 @@ def merge(pretokens: dict[tuple[bytes, ...], int], vocabulary: dict[int, bytes],
     new_symbol = max_pair[0] + max_pair[1]
     vocabulary[cur_vocab_idx] = new_symbol
     
-    # Merge pair for pretokens
-    new_pretokens = defaultdict(int)
-    for pretoken, freq in pretokens.items():
-      new_pretoken = []
-      n = len(pretoken)
+    # Update pretokens, pair_counts, pair_to_pretokens
+    for pretoken in set(pair_to_pretokens[max_pair]):
+      if pretoken not in pretokens:
+        continue
       
+      n = len(pretoken)
+
+      # Create new_pretoken
+      new_pretoken_lst = []      
       i = 0
       while i < n:
         if i < n - 1 and pretoken[i] == max_pair[0] and pretoken[i+1] == max_pair[1]:
-          new_pretoken.append(new_symbol)
+          new_pretoken_lst.append(new_symbol)
           i += 2
         else:
-          new_pretoken.append(pretoken[i])
+          new_pretoken_lst.append(pretoken[i])
           i += 1
           
-      new_pretokens[tuple(new_pretoken)] += freq
+      new_pretoken = tuple(new_pretoken_lst)
       
-    pretokens = new_pretokens
+      # Update pretokens
+      freq = pretokens[pretoken]
+      pretoken_to_new_pretoken[pretoken] = new_pretoken
+      
+      # Update pair_counts
+      for pair in zip(pretoken[:-1], pretoken[1:]):
+        pair_counts[pair] -= freq
+        if pair in pair_counts and pair_counts[pair] == 0:
+          del pair_counts[pair]
+        
+      for pair in zip(new_pretoken[:-1], new_pretoken[1:]):
+        pair_counts[pair] += freq
+      
+      # Update pair_to_pretokens
+      # This will have stale entries, just will have to deal with it
+      for pair in zip(new_pretoken[:-1], new_pretoken[1:]):
+        pair_to_pretokens[pair].append(new_pretoken)
+          
+    pair_to_pretokens.pop(max_pair, None)
+    
+    # Update pretokens
+    for pretoken, new_pretoken in pretoken_to_new_pretoken.items():
+      pretokens[new_pretoken] += pretokens[pretoken]
+      del pretokens[pretoken]
 
   return merges
 
