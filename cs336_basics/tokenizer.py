@@ -7,6 +7,7 @@ from pathlib import Path
 from multiprocessing import Pool
 from typing import BinaryIO
 from collections import defaultdict
+from tqdm import tqdm
 
 
 def find_chunk_boundaries(
@@ -116,7 +117,11 @@ def pretokenize(input_path: str | os.PathLike, chunk_boundaries: list[int], spec
   ]
   
   with Pool(num_processes) as pool:
-    results = pool.map(pretokenize_chunk, args) 
+    results = tqdm(
+      pool.imap(pretokenize_chunk, args),
+      total=len(args),
+      desc="Pretokenizing",
+    )
     
   for local_pretokens in results:
     for pretoken, freq in local_pretokens.items():
@@ -145,7 +150,7 @@ def merge(pretokens: dict[tuple[bytes, ...], int], vocabulary: dict[int, bytes],
   merges = []
   pair_counts, pair_to_pretokens = get_stats(pretokens)
   
-  for cur_vocab_idx in range(init_vocab_size, vocab_size):
+  for cur_vocab_idx in tqdm(range(init_vocab_size, vocab_size), desc="Merging"):
     pretoken_to_new_pretoken = {}
     
     # Get most frequent pair  
