@@ -217,7 +217,7 @@ def run_train_bpe(
     """Given the path to an input corpus, run train a BPE tokenizer and
     output its vocabulary and merges."""
     
-    num_processes = max(((os.cpu_count() or 1) - 1) // 2, 1)
+    num_processes = max(((os.cpu_count() or 1) - 1), 1)
     
     chunk_boundaries = call_find_chunk_boundaries(input_path, num_processes)
         
@@ -237,10 +237,11 @@ def main():
   input_path = ROOT / "data" / "TinyStoriesV2-GPT4-train.txt"
   vocab_path = ROOT / "tokenizer_output" / "tinystories_vocab.json"
   merges_path = ROOT / "tokenizer_output" / "tinystories_merge.txt"
+  
+  vocab_path.parent.mkdir(parents=True, exist_ok=True)
 
   special_tokens = ["<|endoftext|>"]
   vocabulary, merges = run_train_bpe(input_path, 10000, special_tokens)
-
   
   with vocab_path.open("w", encoding="utf-8") as f:
     json.dump({k: v.hex() for k, v in vocabulary.items()}, f, indent=2)
