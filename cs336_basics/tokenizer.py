@@ -1,6 +1,7 @@
 import os
 import regex as re
 
+from multiprocessing import Pool
 from typing import BinaryIO
 from collections import defaultdict
 
@@ -74,31 +75,50 @@ def initialize_vocabulary(special_tokens: list[str]) -> dict[int, bytes]:
   return vocabulary
 
 
-def pretokenize(input_path: str | os.PathLike, chunk_boundaries: list[int], special_tokens: list[str]
-) -> dict[tuple[bytes, ...], int]:
+def pretokenize_chunk(args) -> dict[tuple[bytes, ...], int]:
+  input_path, start, end, special_tokens = args
+  
   pretokens = defaultdict(int)
   
   PAT = r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
   
   # Serial implementation
   with open(input_path, "rb") as f:
-    for start, end in zip(chunk_boundaries[:-1], chunk_boundaries[1:]):
-      f.seek(start)
-      raw_chunk = f.read(end - start).decode("utf-8", errors="ignore") # this is a string
+    f.seek(start)
+    raw_chunk = f.read(end - start).decode("utf-8", errors="ignore") # this is a string
+    
+    # Remove special tokens
+    if special_tokens:
+      special_pattern = "|".join([re.escape(special_token) for special_token in special_tokens])
+      chunks = re.split(special_pattern, raw_chunk)
+    else:
+      chunks = [raw_chunk]
+    
+    for chunk in chunks:
+      matches = re.finditer(PAT, chunk)
       
-      # Remove special tokens
-      if special_tokens:
-        special_pattern = "|".join([re.escape(special_token) for special_token in special_tokens])
-        chunks = re.split(special_pattern, raw_chunk)
-      else:
-        chunks = [raw_chunk]
-      
-      for chunk in chunks:
-        matches = re.finditer(PAT, chunk)
-        
-        for match in matches:
-          pretokens[tuple(bytes([b]) for b in match.group(0).encode("utf-8"))] += 1
+      for match in matches:
+        pretokens[tuple(bytes([b]) for b in match.group(0).encode("utf-8"))] += 1
           
+  return pretokens
+
+
+def pretokenize(input_path: str | os.PathLike, chunk_boundaries: list[int], special_tokens: list[str], num_processes: int
+) -> dict[tuple[bytes, ...], int]:
+  pretokens = defaultdict(int)
+  
+  args = [
+    (input_path, start, end, special_tokens)
+   for start, end in zip(chunk_boundaries[:-1], chunk_boundaries[1:])
+  ]
+  
+  with Pool(num_processes) as pool:
+    results = pool.map(pretokenize_chunk, args) 
+    
+  for local_pretokens in results:
+    for pretoken, freq in local_pretokens.items():
+      pretokens[pretoken] += freq
+
   return pretokens
 
 
@@ -196,7 +216,8 @@ def run_train_bpe(
     vocabulary = initialize_vocabulary(special_tokens)
     init_vocab_size = len(vocabulary)  
 
-    pretokens = pretokenize(input_path, chunk_boundaries, special_tokens)
+    num_proceses = max((os.cpu_count() or 1) - 1, 1)
+    pretokens = pretokenize(input_path, chunk_boundaries, special_tokens, 4)
   
     merges = merge(pretokens, vocabulary, init_vocab_size, vocab_size)
     
