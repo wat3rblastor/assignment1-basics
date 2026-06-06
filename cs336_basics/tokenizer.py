@@ -116,15 +116,13 @@ def pretokenize(input_path: str | os.PathLike, chunk_boundaries: list[int], spec
   ]
   
   with Pool(num_processes) as pool:
-    results = tqdm(
+    for local_pretokens in tqdm(
       pool.imap(pretokenize_chunk, args),
       total=len(args),
       desc="Pretokenizing",
-    )
-    
-  for local_pretokens in results:
-    for pretoken, freq in local_pretokens.items():
-      pretokens[pretoken] += freq
+    ):
+      for pretoken, freq in local_pretokens.items():
+        pretokens[pretoken] += freq
 
   return pretokens
 
@@ -222,12 +220,12 @@ def run_train_bpe(
     num_processes = max(((os.cpu_count() or 1) - 1) // 2, 1)
     
     chunk_boundaries = call_find_chunk_boundaries(input_path, num_processes)
-    
+        
     vocabulary = initialize_vocabulary(special_tokens)
     init_vocab_size = len(vocabulary)  
 
     pretokens = pretokenize(input_path, chunk_boundaries, special_tokens, num_processes)
-  
+
     merges = merge(pretokens, vocabulary, init_vocab_size, vocab_size)
     
     return vocabulary, merges
