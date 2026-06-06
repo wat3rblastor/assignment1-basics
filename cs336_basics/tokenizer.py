@@ -103,16 +103,16 @@ def pretokenize(input_path: str | os.PathLike, chunk_boundaries: list[int], spec
 
 
 def get_stats(pretokens: dict[tuple[bytes, ...], int]
-) -> tuple[dict[tuple[bytes, bytes], int], dict[tuple[bytes, bytes], list[tuple[bytes, ...]]]]:
+) -> tuple[dict[tuple[bytes, bytes], int], dict[tuple[bytes, bytes], set[tuple[bytes, ...]]]]:
   pair_counts = defaultdict(int)
-  pair_to_pretokens = defaultdict(list)
+  pair_to_pretokens = defaultdict(set)
   
   for pretoken, freq in pretokens.items():
     for i in range(len(pretoken) - 1):
       pair = (pretoken[i], pretoken[i+1])
       
       pair_counts[pair] += freq
-      pair_to_pretokens[pair].append(tuple(pretoken))
+      pair_to_pretokens[pair].add(tuple(pretoken))
       
   return pair_counts, pair_to_pretokens
 
@@ -136,7 +136,7 @@ def merge(pretokens: dict[tuple[bytes, ...], int], vocabulary: dict[int, bytes],
     vocabulary[cur_vocab_idx] = new_symbol
     
     # Update pretokens, pair_counts, pair_to_pretokens
-    for pretoken in set(pair_to_pretokens[max_pair]):
+    for pretoken in pair_to_pretokens[max_pair]:
       if pretoken not in pretokens:
         continue
       
@@ -171,7 +171,7 @@ def merge(pretokens: dict[tuple[bytes, ...], int], vocabulary: dict[int, bytes],
       # Update pair_to_pretokens
       # This will have stale entries, just will have to deal with it
       for pair in zip(new_pretoken[:-1], new_pretoken[1:]):
-        pair_to_pretokens[pair].append(new_pretoken)
+        pair_to_pretokens[pair].add(new_pretoken)
           
     pair_to_pretokens.pop(max_pair, None)
     
