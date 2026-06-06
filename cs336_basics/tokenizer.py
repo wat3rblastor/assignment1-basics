@@ -1,6 +1,7 @@
 import os
 import regex as re
 import json
+import cProfile
 
 from pathlib import Path
 from multiprocessing import Pool
@@ -219,7 +220,7 @@ def run_train_bpe(
     vocabulary = initialize_vocabulary(special_tokens)
     init_vocab_size = len(vocabulary)  
 
-    num_processes = max((os.cpu_count() or 1) - 1, 1)
+    num_processes = max(((os.cpu_count() or 1) - 1) // 2, 1)
     pretokens = pretokenize(input_path, chunk_boundaries, special_tokens, num_processes)
   
     merges = merge(pretokens, vocabulary, init_vocab_size, vocab_size)
@@ -227,7 +228,7 @@ def run_train_bpe(
     return vocabulary, merges
   
   
-if __name__ == "__main__":
+def main():
   ROOT = Path(__file__).resolve().parents[1]
 
   input_path = ROOT / "data" / "TinyStoriesV2-GPT4-train.txt"
@@ -244,3 +245,7 @@ if __name__ == "__main__":
   with merges_path.open("w", encoding="utf-8") as f:
     for left, right in merges:
       f.write(f"{left} {right}\n")
+      
+  
+if __name__ == "__main__":
+  cProfile.run("main()", "tokenizer.prof")
