@@ -248,7 +248,7 @@ def main():
     
   with merges_path.open("w", encoding="utf-8") as f:
     for left, right in merges:
-      f.write(f"{left} {right}\n")
+      f.write(f"{left.hex()} {right.hex()}\n")
       
   
 if __name__ == "__main__":
