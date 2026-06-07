@@ -1,5 +1,6 @@
 import json
 import regex as re
+import os
 
 from collections.abc import Iterable, Iterator
 
@@ -26,8 +27,8 @@ class Tokenizer:
   
   @classmethod
   def from_files(cls,
-                 vocab_filepath: str,
-                 merges_filepath: str,
+                 vocab_filepath: str | os.PathLike,
+                 merges_filepath: str | os.PathLike,
                  special_tokens: list[str] | None = None):
     with open(vocab_filepath, "r", encoding="utf-8") as f:
       raw_vocab = json.load(f)
@@ -79,7 +80,9 @@ class Tokenizer:
     token_id_seq = []
     
     for pretoken in pretokens:
-      if self.special_tokens and pretoken[0].decode("utf-8") in self.special_tokens:
+      if (self.special_tokens 
+          and len(pretoken) == 1
+          and pretoken[0] in {s.encode("utf-8") for s in self.special_tokens}):
         token_id_seq.append(self.reverse_vocab[pretoken[0]])
         continue
       

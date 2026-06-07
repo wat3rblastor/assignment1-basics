@@ -16,3 +16,10 @@
 (a) It took around 2 minutes and 33.4 GB of memory to train. This is just from a quick glance, but the longest possible token is possibly 0x206772616e646461756768746572. I don't know what this represents, so I don't know if this makes sense. Remember, we did byte-pair encoding, not character-pair encoding.
 
 (b) The pretokenization takes the most time. 
+
+### Question tokenizer_experiments
+(a) The tokenizer's compression ratio for the TinyStories tokenizer on the first 10 documents of TinyStories is 4.163 (bytes / token). I did not train the tokenizer for OpenWebText because I didn't want to train it for 12 hours.
+
+(b) If I tokenize my OWT sample with the TinyStories tokenizer, I get a compression ratio of 3.199 (bytes / token). Conceptually, this tokenizer did not merge the most frequent byte pairs in the OWT text. Therefore, the most frequent bytes are likely represented with more tokens, and therefore we have a worse off compression ratio.
+
+(c) The throughput of my tokenizer is around 3693.3 bytes/second. It would take (825 * 10^9) / 3963.3 = 223377467 seconds to tokenize the entire Pile dataset, or around 2585.3 days. :O
