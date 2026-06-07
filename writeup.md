@@ -22,4 +22,4 @@
 
 (b) If I tokenize my OWT sample with the TinyStories tokenizer, I get a compression ratio of 3.199 (bytes / token). Conceptually, this tokenizer did not merge the most frequent byte pairs in the OWT text. Therefore, the most frequent bytes are likely represented with more tokens, and therefore we have a worse off compression ratio.
 
-(c) The throughput of my tokenizer is around 1044276.56 bytes/second. It would take (825 * 10^9) / 3963.3 = 790020.60527 seconds to tokenize the entire Pile dataset, or around 9.14 days. :O
+(c) The throughput of my tokenizer is around 1044276.56 bytes/second. It would take (825 * 10^9) / 1044276.56 = 790020.60527 seconds to tokenize the entire Pile dataset, or around 9.14 days. :O
