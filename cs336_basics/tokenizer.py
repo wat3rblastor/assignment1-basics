@@ -16,8 +16,10 @@ class Tokenizer:
     if special_tokens:
       # When encoding, group by larger special tokens first
       self.special_tokens = sorted(special_tokens, key=len, reverse=True)
+      self.special_token_bytes = {s.encode("utf-8") for s in self.special_tokens}
     else:
       self.special_tokens = None
+      self.special_token_bytes = None
     
     # bytes -> tokenID
     self.reverse_vocab = {
@@ -82,7 +84,7 @@ class Tokenizer:
     for pretoken in pretokens:
       if (self.special_tokens 
           and len(pretoken) == 1
-          and pretoken[0] in {s.encode("utf-8") for s in self.special_tokens}):
+          and pretoken[0] in self.special_token_bytes):
         token_id_seq.append(self.reverse_vocab[pretoken[0]])
         continue
       
@@ -121,3 +123,18 @@ class Tokenizer:
       byte_seq += self.vocab[id]
       
     return byte_seq.decode("utf-8", errors="replace")
+  
+  
+def main():
+  ROOT = Path(__file__).resolve().parents[1]
+  train_input_path = ROOT / "data" / "TinyStoriesV2-GPT4-train.txt"
+  valid_input_path = ROOT / "data" / "TinyStoriesV2-GPT4-valid.txt"
+  
+  vocab_path = ROOT / "tokenizer_output" / "tinystories_vocab.json"
+  merges_path = ROOT / "tokenizer_output" / "tinystories_merge.txt"
+  
+  tokenizer = Tokenizer.from_files()
+  
+  
+if __name__ == "__main__":
+  main()
