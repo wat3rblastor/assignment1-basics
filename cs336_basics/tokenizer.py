@@ -1,7 +1,10 @@
 import json
 import regex as re
 import os
+import numpy as np
 
+from typing import BinaryIO
+from pathlib import Path
 from collections.abc import Iterable, Iterator
 
 
@@ -97,31 +100,23 @@ class Tokenizer:
       cur_pretoken = pretoken
       
       while True:
-        # Calculate all adjacent pairs
-        pairs = []
-        for left, right in zip(cur_pretoken[:-1], cur_pretoken[1:]):
-          pairs.append((left, right))
-          
-        smallest_rank = -1  
-      
-        for pair in pairs:
-          if pair in self.merge_ranks:
-            if smallest_rank == -1:
-              smallest_rank = self.merge_ranks[pair]
-            else:
-              if self.merge_ranks[pair] < smallest_rank:
-                smallest_rank = self.merge_ranks[pair]
-                
-        if smallest_rank == -1:
+        best_pair = None
+        best_rank = float("inf")
+        
+        for pair in zip(cur_pretoken[:-1], cur_pretoken[1:]):
+          rank = self.merge_ranks.get(pair)
+          if rank is not None and rank < best_rank:
+            best_pair = pair
+            best_rank = rank
+            
+        if best_pair is None:
           break
-      
+        
+        merge = best_pair
+        new_symbol = merge[0] + merge[1]
+
         n = len(cur_pretoken)
         new_pretoken = []
-        
-        merge = self.merges[smallest_rank]
-        
-        new_symbol = merge[0] + merge[1]
-        
         i = 0
         while i < n:
           if i + 1 < n and cur_pretoken[i] == merge[0] and cur_pretoken[i+1] == merge[1]:
@@ -143,24 +138,40 @@ class Tokenizer:
       yield from self.encode(text)
   
   def decode(self, ids: list[int]) -> str:
-    byte_seq = b""
-    
-    for id in ids:
-      byte_seq += self.vocab[id]
-      
+    byte_seq = b"".join(self.vocab[id] for id in ids)
     return byte_seq.decode("utf-8", errors="replace")
-  
+    
   
 def main():
   ROOT = Path(__file__).resolve().parents[1]
   train_input_path = ROOT / "data" / "TinyStoriesV2-GPT4-train.txt"
   valid_input_path = ROOT / "data" / "TinyStoriesV2-GPT4-valid.txt"
   
+  train_output_path = ROOT / "data" / "TinyStories-TokenIDs-train.bin"
+  valid_output_path = ROOT / "data" / "TinyStories-TokenIDs-valid.bin"
+  
   vocab_path = ROOT / "tokenizer_output" / "tinystories_vocab.json"
   merges_path = ROOT / "tokenizer_output" / "tinystories_merge.txt"
   
-  tokenizer = Tokenizer.from_files()
+  special_tokens = ["<|endoftext|>"]
   
+  tokenizer = Tokenizer.from_files(vocab_path, merges_path, special_tokens)
+  
+  with valid_input_path.open("r", encoding="utf-8") as f:
+    text_valid = f.read()
+    
+  # This is assuming vocab_size < 2^16
+  token_ids = tokenizer.encode(text_valid)
+  np_token_ids = np.array(token_ids, dtype=np.uint16)
+  np_token_ids.tofile(valid_output_path)
+  
+  with train_input_path.open("r", encoding="utf-8") as f:
+    text_train = f.read()  
+
+  token_ids = tokenizer.encode(text_train)
+  np_token_ids = np.array(token_ids, dtype=np.uint16)
+  np_token_ids.tofile(train_output_path)
+    
   
 if __name__ == "__main__":
   main()
