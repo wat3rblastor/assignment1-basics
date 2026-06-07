@@ -6,7 +6,7 @@ import numpy as np
 from typing import BinaryIO
 from pathlib import Path
 from collections.abc import Iterable, Iterator
-
+from tqdm import tqdm
 
 class Tokenizer:
   def __init__(self, vocab: dict[int, bytes], 
@@ -89,7 +89,10 @@ class Tokenizer:
     
     token_id_seq = []
     
-    for pretoken in pretokens:
+    for pretoken in tqdm(pretokens,
+                         desc="Encoding",
+                         unit="pretoken",
+                         total=len(pretokens)):
       if (self.special_tokens 
           and self.special_token_bytes
           and len(pretoken) == 1
@@ -147,8 +150,8 @@ def main():
   train_input_path = ROOT / "data" / "TinyStoriesV2-GPT4-train.txt"
   valid_input_path = ROOT / "data" / "TinyStoriesV2-GPT4-valid.txt"
   
-  train_output_path = ROOT / "data" / "TinyStories-TokenIDs-train.bin"
-  valid_output_path = ROOT / "data" / "TinyStories-TokenIDs-valid.bin"
+  train_output_path = ROOT / "tokenizer_output" / "TinyStories-TokenIDs-train.bin"
+  valid_output_path = ROOT / "tokenizer_output" / "TinyStories-TokenIDs-valid.bin"
   
   vocab_path = ROOT / "tokenizer_output" / "tinystories_vocab.json"
   merges_path = ROOT / "tokenizer_output" / "tinystories_merge.txt"
@@ -161,6 +164,7 @@ def main():
     text_valid = f.read()
     
   # This is assuming vocab_size < 2^16
+  # Which is fine since vocab size is 10000 for TinyStories and 32000 for OWT
   token_ids = tokenizer.encode(text_valid)
   np_token_ids = np.array(token_ids, dtype=np.uint16)
   np_token_ids.tofile(valid_output_path)
