@@ -13,6 +13,11 @@ class Tokenizer:
     self.vocab = vocab
     self.merges = merges
     
+    self.merge_ranks = {
+      pair: rank
+      for rank, pair in enumerate(self.merges)
+    }
+    
     if special_tokens:
       # When encoding, group by larger special tokens first
       self.special_tokens = sorted(special_tokens, key=len, reverse=True)
@@ -83,6 +88,7 @@ class Tokenizer:
     
     for pretoken in pretokens:
       if (self.special_tokens 
+          and self.special_token_bytes
           and len(pretoken) == 1
           and pretoken[0] in self.special_token_bytes):
         token_id_seq.append(self.reverse_vocab[pretoken[0]])
@@ -90,9 +96,29 @@ class Tokenizer:
       
       cur_pretoken = pretoken
       
-      for merge in self.merges:
+      while True:
+        # Calculate all adjacent pairs
+        pairs = []
+        for left, right in zip(cur_pretoken[:-1], cur_pretoken[1:]):
+          pairs.append((left, right))
+          
+        smallest_rank = -1  
+      
+        for pair in pairs:
+          if pair in self.merge_ranks:
+            if smallest_rank == -1:
+              smallest_rank = self.merge_ranks[pair]
+            else:
+              if self.merge_ranks[pair] < smallest_rank:
+                smallest_rank = self.merge_ranks[pair]
+                
+        if smallest_rank == -1:
+          break
+      
         n = len(cur_pretoken)
-        new_pretoken = [] 
+        new_pretoken = []
+        
+        merge = self.merges[smallest_rank]
         
         new_symbol = merge[0] + merge[1]
         
@@ -106,7 +132,7 @@ class Tokenizer:
             i += 1
             
         cur_pretoken = tuple(new_pretoken)
-            
+      
       for token in cur_pretoken:
         token_id_seq.append(self.reverse_vocab[token])
         
