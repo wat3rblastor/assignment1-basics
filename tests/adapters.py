@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from collections.abc import Iterable
+from collections import OrderedDict
 from typing import IO, Any, BinaryIO
 
 import numpy.typing as npt
@@ -32,7 +33,7 @@ def run_linear(
     """
 
     linear = transformer.Linear(d_in, d_out)
-    state_dict = {}
+    state_dict = OrderedDict()
     state_dict["w"] = weights
     linear.load_state_dict(state_dict)
     
@@ -58,7 +59,12 @@ def run_embedding(
         Float[Tensor, "... d_model"]: Batch of embeddings returned by your Embedding layer.
     """
 
-    raise NotImplementedError
+    embedding = transformer.Embedding(vocab_size, d_model)
+    state_dict = OrderedDict()
+    state_dict["embedding_matrix"] = weights
+    embedding.load_state_dict(state_dict)
+    
+    return embedding(token_ids)
 
 
 def run_swiglu(
