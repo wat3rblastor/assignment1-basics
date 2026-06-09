@@ -197,7 +197,7 @@ def encode_file_to_bin(
   total_bytes = input_path.stat().st_size
   output_path.parent.mkdir(parents=True, exist_ok=True)
   
-  chunk_size = 2 ** 32
+  chunk_size = 2 ** 20
   with input_path.open("rb") as f:
     chunk_boundaries = find_chunk_boundaries(f, chunk_size, b"<|endoftext|>")
     
