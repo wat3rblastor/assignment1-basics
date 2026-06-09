@@ -50,8 +50,8 @@ class RMSNorm(torch.nn.Module):
   def __init__(self,
                d_model: int,
                eps: float = 1e-5,
-               device=None,
-               dtype=None):
+               device: torch.device | None = None,
+               dtype: torch.dtype | None = None):
     super().__init__()
     
     self.g = torch.nn.parameter.Parameter(
@@ -72,3 +72,63 @@ class RMSNorm(torch.nn.Module):
     result = (1 / rms) * x * self.g
 
     return result.to(in_dtype)
+  
+  
+class SiLU(torch.nn.Module):
+  def __init__(self):
+    super().__init__()
+    
+  def forward(self, x: torch.Tensor) -> torch.Tensor:
+    return x * torch.sigmoid(x)
+  
+  
+class FeedForward(torch.nn.Module):
+  def __init__(self,
+               d_model: int,
+               d_ff: int,
+               device: torch.device | None = None,
+               dtype: torch.dtype | None = None):
+    super().__init__()
+    
+    self.d_model = d_model
+    self.d_ff = d_ff
+    self.silu = SiLU()
+
+    self.w1 = torch.nn.parameter.Parameter(
+      torch.empty(
+        (self.d_ff, self.d_model),
+        device=device,
+        dtype=dtype
+      )
+    )
+    
+    self.w2 = torch.nn.parameter.Parameter(
+      torch.empty(
+        (self.d_model, self.d_ff),
+        device=device,
+        dtype=dtype
+      )
+    )
+    
+    self.w3 = torch.nn.parameter.Parameter(
+      torch.empty(
+        (self.d_ff, self.d_model),
+        device=device,
+        dtype=dtype
+      )
+    )
+    
+    variance = 2 / (self.d_model + self.d_ff)
+    stddev = math.sqrt(variance)
+    
+    torch.nn.init.trunc_normal_(self.w1, 0, stddev, -3 * stddev, 3 * stddev)
+    torch.nn.init.trunc_normal_(self.w2, 0, stddev, -3 * stddev, 3 * stddev)
+    torch.nn.init.trunc_normal_(self.w3, 0, stddev, -3 * stddev, 3 * stddev)
+    
+  def forward(self, x: torch.Tensor) -> torch.Tensor:
+    w1_x = x @ self.w1.T
+    silu_x = self.silu(w1_x)
+    
+    w3_x = x @ self.w3.T
+    
+    return (silu_x * w3_x) @ self.w2.T
