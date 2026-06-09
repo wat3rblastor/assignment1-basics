@@ -10,7 +10,7 @@ class Linear(torch.nn.Module):
     super().__init__()
     
     self.w = torch.nn.parameter.Parameter(
-      torch.zeros((out_features, in_features),
+      torch.empty((out_features, in_features),
                   device=device,
                   dtype=dtype
       )
@@ -33,7 +33,7 @@ class Embedding(torch.nn.Module):
     super().__init__()
     
     self.embedding_matrix = torch.nn.parameter.Parameter(
-      torch.zeros(
+      torch.empty(
         (num_embeddings, embedding_dim),
         device=device,
         dtype=dtype
