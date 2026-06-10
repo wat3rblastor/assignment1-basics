@@ -132,3 +132,38 @@ class FeedForward(torch.nn.Module):
     w3_x = x @ self.w3.T
     
     return (silu_x * w3_x) @ self.w2.T
+  
+  
+class RotaryPositionalEmbedding(torch.nn.Module):
+  def __init__(self,
+                theta: float,
+                d_k: int,
+                max_seq_len: int,
+                device: torch.device | None = None):
+    super().__init__()
+    
+    i = torch.arange(max_seq_len, device=device).unsqueeze(1)
+    k = torch.arange(d_k // 2, device=device).unsqueeze(0)
+    
+    angle = i / (theta ** (k / d_k))
+    
+    sin = torch.sin(angle)
+    cos = torch.cos(angle)
+    
+    self.register_buffer("sin_buffer", sin, persistent=False)
+    self.register_buffer("cos_buffer", cos, persistent=False)
+  
+  def forward(self, x: torch.Tensor, token_positions: torch.Tensor) -> torch.Tensor:
+    raise NotImplementedError
+  
+  
+class SoftMax(torch.nn.Module):
+  def __init__(self):
+    super().__init__()
+    
+  def forward(self, x: torch.Tensor, dimension: int):
+    x = x - torch.amax(x, dim=dimension, keepdim=True)
+    x_exp = torch.exp(x)
+  
+    return x_exp / torch.sum(x_exp, dim=dimension, keepdim=True)
+    
