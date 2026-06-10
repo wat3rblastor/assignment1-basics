@@ -157,13 +157,8 @@ class RotaryPositionalEmbedding(torch.nn.Module):
     raise NotImplementedError
   
   
-class SoftMax(torch.nn.Module):
-  def __init__(self):
-    super().__init__()
-    
-  def forward(self, x: torch.Tensor, dimension: int):
-    x = x - torch.amax(x, dim=dimension, keepdim=True)
-    x_exp = torch.exp(x)
-  
-    return x_exp / torch.sum(x_exp, dim=dimension, keepdim=True)
-    
+def softmax(x: torch.Tensor, dim: int) -> torch.Tensor:
+  x = x - torch.amax(x, dim=dim, keepdim=True)
+  x_exp = torch.exp(x)
+
+  return x_exp / torch.sum(x_exp, dim=dim, keepdim=True)
