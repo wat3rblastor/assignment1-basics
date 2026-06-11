@@ -438,8 +438,44 @@ def run_transformer_lm(
         Float[Tensor, "batch_size sequence_length vocab_size"]: Tensor with the predicted unnormalized
         next-word distribution for each token.
     """
-    raise NotImplementedError
-
+    d_k = d_model // num_heads
+    rope = transformer.RotaryPositionalEmbedding(rope_theta, d_k, context_length)
+    
+    batch_size = in_indices.shape[0]
+    seq_len = in_indices.shape[1]
+    token_positions = torch.arange(seq_len, device=in_indices.device)
+    token_positions = token_positions.unsqueeze(0).expand(batch_size, -1)
+    
+    transformer_lm = transformer.TransformerLM(
+        d_model,
+        num_heads,
+        d_ff,
+        vocab_size,
+        num_layers,
+        rope
+    )
+    
+    state_dict = OrderedDict()
+    state_dict["embedding.embedding_matrix"] = weights["token_embeddings.weight"]
+    
+    for i in range(num_layers):
+        state_dict[f"transformer_blocks.{i}.attention.W_Q"] = weights[f"layers.{i}.attn.q_proj.weight"]
+        state_dict[f"transformer_blocks.{i}.attention.W_K"] = weights[f"layers.{i}.attn.k_proj.weight"]
+        state_dict[f"transformer_blocks.{i}.attention.W_V"] = weights[f"layers.{i}.attn.v_proj.weight"]
+        state_dict[f"transformer_blocks.{i}.attention.W_O"] = weights[f"layers.{i}.attn.output_proj.weight"]
+        state_dict[f"transformer_blocks.{i}.rms1.g"] = weights[f"layers.{i}.ln1.weight"]
+        state_dict[f"transformer_blocks.{i}.ffn.w1"] = weights[f"layers.{i}.ffn.w1.weight"]
+        state_dict[f"transformer_blocks.{i}.ffn.w2"] = weights[f"layers.{i}.ffn.w2.weight"]
+        state_dict[f"transformer_blocks.{i}.ffn.w3"] = weights[f"layers.{i}.ffn.w3.weight"]
+        state_dict[f"transformer_blocks.{i}.rms2.g"] = weights[f"layers.{i}.ln2.weight"]
+        
+    state_dict["norm.g"] = weights["ln_final.weight"]
+    state_dict["linear.w"] = weights["lm_head.weight"]
+    
+    transformer_lm.load_state_dict(state_dict)
+    
+    return transformer_lm(in_indices, token_positions)
+    
 
 def run_rmsnorm(
     d_model: int,

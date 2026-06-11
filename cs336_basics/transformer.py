@@ -296,11 +296,13 @@ class CausalMultiHeadSelfAttention(torch.nn.Module):
   
   
 class TransformerBlock(torch.nn.Module):
-  def __init__(self,
-                d_model: int,
-                num_heads: int,
-                d_ff: int,
-                rope: RotaryPositionalEmbedding | None = None):
+  def __init__(
+    self,
+    d_model: int,
+    num_heads: int,
+    d_ff: int,
+    rope: RotaryPositionalEmbedding | None = None
+  ):
     super().__init__()
     
     self.rms1 = RMSNorm(d_model)
@@ -310,7 +312,49 @@ class TransformerBlock(torch.nn.Module):
     )
     self.ffn = FeedForward(d_model, d_ff)
     
-  def forward(self, x: torch.Tensor, token_ids: torch.Tensor | None = None):
-    y = x + self.attention(self.rms1(x), token_ids)
+  def forward(self, x: torch.Tensor, token_positions: torch.Tensor | None = None):
+    y = x + self.attention(self.rms1(x), token_positions)
     z = y + self.ffn(self.rms2(y))
     return z
+  
+  
+class TransformerLM(torch.nn.Module):
+  def __init__(
+    self,
+    d_model: int,
+    num_heads: int,
+    d_ff: int,
+    vocab_size: int,
+    num_layers: int,
+    rope: RotaryPositionalEmbedding | None = None
+  ):
+    super().__init__()
+    
+    self.embedding = Embedding(
+      vocab_size,
+      d_model
+    )
+    
+    self.transformer_blocks = torch.nn.ModuleList([
+      TransformerBlock(
+        d_model,
+        num_heads,
+        d_ff,
+        rope
+      )
+      for _ in range(num_layers)
+    ])
+    
+    self.norm = RMSNorm(d_model)
+    self.linear = Linear(d_model, vocab_size)
+
+  def forward(self, x: torch.Tensor, token_positions: torch.Tensor | None = None):
+    x = self.embedding(x)
+
+    for block in self.transformer_blocks:
+      x = block(x, token_positions)
+      
+    x = self.norm(x)
+    x = self.linear(x)
+    
+    return x  
