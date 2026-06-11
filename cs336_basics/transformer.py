@@ -2,11 +2,13 @@ import torch
 import math
 
 class Linear(torch.nn.Module):
-  def __init__(self, 
-               in_features: int, 
-               out_features: int, 
-               device: torch.device | None = None,
-               dtype: torch.dtype | None = None):
+  def __init__(
+    self, 
+    in_features: int, 
+    out_features: int, 
+    device: torch.device | None = None,
+    dtype: torch.dtype | None = None
+  ):
     super().__init__()
     
     self.w = torch.nn.parameter.Parameter(
@@ -25,11 +27,13 @@ class Linear(torch.nn.Module):
 
 
 class Embedding(torch.nn.Module):
-  def __init__(self,
-               num_embeddings: int,
-               embedding_dim: int,
-               device: torch.device | None = None,
-               dtype: torch.dtype | None = None):
+  def __init__(
+    self,
+    num_embeddings: int,
+    embedding_dim: int,
+    device: torch.device | None = None,
+    dtype: torch.dtype | None = None
+  ):
     super().__init__()
     
     self.embedding_matrix = torch.nn.parameter.Parameter(
@@ -47,11 +51,13 @@ class Embedding(torch.nn.Module):
   
   
 class RMSNorm(torch.nn.Module):
-  def __init__(self,
-               d_model: int,
-               eps: float = 1e-5,
-               device: torch.device | None = None,
-               dtype: torch.dtype | None = None):
+  def __init__(
+    self,
+    d_model: int,
+    eps: float = 1e-5,
+    device: torch.device | None = None,
+    dtype: torch.dtype | None = None
+  ):
     super().__init__()
     
     self.g = torch.nn.parameter.Parameter(
@@ -74,25 +80,22 @@ class RMSNorm(torch.nn.Module):
     return result.to(in_dtype)
   
   
-class SiLU(torch.nn.Module):
-  def __init__(self):
-    super().__init__()
-    
-  def forward(self, x: torch.Tensor) -> torch.Tensor:
-    return x * torch.sigmoid(x)
+def silu(x: torch.Tensor) -> torch.Tensor:
+  return x * torch.sigmoid(x)
   
-  
+
 class FeedForward(torch.nn.Module):
-  def __init__(self,
-               d_model: int,
-               d_ff: int,
-               device: torch.device | None = None,
-               dtype: torch.dtype | None = None):
+  def __init__(
+    self,
+    d_model: int,
+    d_ff: int,
+    device: torch.device | None = None,
+    dtype: torch.dtype | None = None
+  ):
     super().__init__()
     
     self.d_model = d_model
     self.d_ff = d_ff
-    self.silu = SiLU()
 
     self.w1 = torch.nn.parameter.Parameter(
       torch.empty(
@@ -127,7 +130,7 @@ class FeedForward(torch.nn.Module):
     
   def forward(self, x: torch.Tensor) -> torch.Tensor:
     w1_x = x @ self.w1.T
-    silu_x = self.silu(w1_x)
+    silu_x = silu(w1_x)
     
     w3_x = x @ self.w3.T
     
@@ -135,11 +138,13 @@ class FeedForward(torch.nn.Module):
   
   
 class RotaryPositionalEmbedding(torch.nn.Module):
-  def __init__(self,
-                theta: float,
-                d_k: int,
-                max_seq_len: int,
-                device: torch.device | None = None):
+  def __init__(
+    self,
+    theta: float,
+    d_k: int,
+    max_seq_len: int,
+    device: torch.device | None = None
+  ):
     super().__init__()
     
     i = torch.arange(max_seq_len, device=device).unsqueeze(1)
@@ -200,12 +205,14 @@ def scaled_dot_product_attention(
 
 
 class CausalMultiHeadSelfAttention(torch.nn.Module):
-  def __init__(self,
-               d_model: int,
-               num_heads: int,
-               rope: RotaryPositionalEmbedding | None = None,
-               device: torch.device | None = None,
-               dtype: torch.dtype | None = None):
+  def __init__(
+    self,
+    d_model: int,
+    num_heads: int,
+    rope: RotaryPositionalEmbedding | None = None,
+    device: torch.device | None = None,
+    dtype: torch.dtype | None = None
+  ):
     super().__init__()
     
     self.device = device
