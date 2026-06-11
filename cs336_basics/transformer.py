@@ -197,3 +197,105 @@ def scaled_dot_product_attention(
   value_weights = softmax(pre_softmax, -1)
   
   return value_weights @ V
+
+
+class CausalMultiHeadSelfAttention(torch.nn.Module):
+  def __init__(self,
+               d_model: int,
+               num_heads: int,
+               theta: float = 10000,
+               max_seq_len: int = 10000, # I don't know what to put here,
+               device: torch.device | None = None,
+               dtype: torch.dtype | None = None):
+    super().__init__()
+    
+    self.device = device
+    self.dtype = dtype
+    
+    self.num_heads = num_heads
+    
+    assert d_model % num_heads == 0
+    
+    self.d_k = d_model // num_heads
+    self.d_v = d_model // num_heads
+    
+    assert self.d_k % 2 == 0
+    
+    self.hd_k = self.d_k * num_heads
+    self.hd_v = self.d_v * num_heads
+    
+    self.W_Q = torch.nn.parameter.Parameter(
+      torch.empty(
+        (self.hd_k, d_model),
+        device=device,
+        dtype=dtype
+      )
+    )
+    
+    self.W_K = torch.nn.parameter.Parameter(
+      torch.empty(
+        (self.hd_k, d_model),
+        device=device,
+        dtype=dtype
+      )
+    )
+    
+    self.W_V = torch.nn.parameter.Parameter(
+      torch.empty(
+        (self.hd_v, d_model),
+        device=device,
+        dtype=dtype
+      )
+    )
+    
+    self.W_O = torch.nn.parameter.Parameter(
+      torch.empty(
+        (d_model, self.hd_v),
+        device=device,
+        dtype=dtype
+      )
+    )
+    
+    variance = 2 / (self.hd_k + d_model)
+    stddev = math.sqrt(variance)
+    torch.nn.init.trunc_normal_(self.W_Q, 0, stddev, -3 * stddev, 3 * stddev)
+    torch.nn.init.trunc_normal_(self.W_K, 0, stddev, -3 * stddev, 3 * stddev)
+    
+    variance = 2 / (self.hd_v + d_model)
+    stddev = math.sqrt(variance)
+    torch.nn.init.trunc_normal_(self.W_V, 0, stddev, -3 * stddev, 3 * stddev)
+    torch.nn.init.trunc_normal_(self.W_O, 0, stddev, -3 * stddev, 3 * stddev)
+    
+    self.rope = RotaryPositionalEmbedding(
+      theta,
+      self.d_k,
+      max_seq_len,
+      self.device
+    )
+    
+  def forward(self, x: torch.Tensor, token_positions: torch.Tensor | None = None) -> torch.Tensor:
+    Q = x @ self.W_Q.transpose(-1, -2)
+    K = x @ self.W_K.transpose(-1, -2)
+    V = x @ self.W_V.transpose(-1, -2)
+    
+    # Batch across head dimension
+    # (batch, num_heads, seq_len, d_k)
+    Q = Q.reshape(*Q.shape[:2], self.num_heads, -1).transpose(1, 2)
+    K = K.reshape(*K.shape[:2], self.num_heads, -1).transpose(1, 2)
+    V = V.reshape(*V.shape[:2], self.num_heads, -1).transpose(1, 2)
+    
+    if token_positions is not None:
+      Q = self.rope(Q, token_positions.unsqueeze(1))
+      K = self.rope(K, token_positions.unsqueeze(1))
+    
+    seq_len = Q.shape[2]
+    
+    mask = torch.tril(
+      torch.ones(seq_len, seq_len, dtype=torch.bool, device=x.device)
+    )
+    
+    attention_vals = scaled_dot_product_attention(Q, K, V, mask)
+    attention_vals = attention_vals.transpose(1, 2)
+    attention_vals = attention_vals.reshape(*attention_vals.shape[:2], -1)
+    
+    return attention_vals @ self.W_O.transpose(-1, -2)
