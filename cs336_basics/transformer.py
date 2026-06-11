@@ -275,9 +275,9 @@ class CausalMultiHeadSelfAttention(torch.nn.Module):
     self.rope = rope
     
   def forward(self, x: torch.Tensor, token_positions: torch.Tensor | None = None) -> torch.Tensor:
-    Q = x @ self.W_Q.transpose(-1, -2)
-    K = x @ self.W_K.transpose(-1, -2)
-    V = x @ self.W_V.transpose(-1, -2)
+    Q = x @ self.W_Q.T
+    K = x @ self.W_K.T
+    V = x @ self.W_V.T
     
     # Batch across head dimension
     # (batch, num_heads, seq_len, d_k)
@@ -299,7 +299,7 @@ class CausalMultiHeadSelfAttention(torch.nn.Module):
     attention_vals = attention_vals.transpose(1, 2)
     attention_vals = attention_vals.reshape(*attention_vals.shape[:2], -1)
     
-    return attention_vals @ self.W_O.transpose(-1, -2)
+    return attention_vals @ self.W_O.T
   
   
 class TransformerBlock(torch.nn.Module):
