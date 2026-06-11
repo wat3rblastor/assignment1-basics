@@ -212,8 +212,11 @@ def run_multihead_self_attention_with_rope(
         Float[Tensor, " ... sequence_length d_model"]: Tensor with the output of running your optimized, batched multi-headed attention
         implementation with the given QKV projection weights and input features.
     """
+    d_k = d_model // num_heads
+    rope = transformer.RotaryPositionalEmbedding(theta, d_k, max_seq_len)
+    
     selfAttention = transformer.CausalMultiHeadSelfAttention(
-        d_model, num_heads, theta, max_seq_len
+        d_model, num_heads, rope
     )
     
     state_dict = OrderedDict()
@@ -324,7 +327,36 @@ def run_transformer_block(
         Float[Tensor, "batch sequence_length d_model"] Tensor with the output of
         running the Transformer block on the input features while using RoPE.
     """
-    raise NotImplementedError
+    
+    d_k = d_model // num_heads
+    rope = transformer.RotaryPositionalEmbedding(theta, d_k, max_seq_len)
+    
+    batch_size = in_features.shape[0]
+    seq_len = in_features.shape[1]
+    token_positions = torch.arange(seq_len, device=in_features.device)
+    token_positions = token_positions.unsqueeze(0).expand(batch_size, -1)
+    
+    transformer_block = transformer.TransformerBlock(
+        d_model,
+        num_heads,
+        d_ff,
+        rope
+    )
+    
+    state_dict = OrderedDict()
+    state_dict["attention.W_Q"] = weights["attn.q_proj.weight"]
+    state_dict["attention.W_K"] = weights["attn.k_proj.weight"]
+    state_dict["attention.W_V"] = weights["attn.v_proj.weight"]
+    state_dict["attention.W_O"] = weights["attn.output_proj.weight"]
+    state_dict["rms1.g"] = weights["ln1.weight"]
+    state_dict["ffn.w1"] = weights["ffn.w1.weight"]
+    state_dict["ffn.w2"] = weights["ffn.w2.weight"]
+    state_dict["ffn.w3"] = weights["ffn.w3.weight"]
+    state_dict["rms2.g"] = weights["ln2.weight"]
+    
+    transformer_block.load_state_dict(state_dict)
+    
+    return transformer_block(in_features, token_positions)
 
 
 def run_transformer_lm(

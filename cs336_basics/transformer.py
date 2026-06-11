@@ -203,8 +203,7 @@ class CausalMultiHeadSelfAttention(torch.nn.Module):
   def __init__(self,
                d_model: int,
                num_heads: int,
-               theta: float = 10000,
-               max_seq_len: int = 10000, # I don't know what to put here,
+               rope: RotaryPositionalEmbedding | None = None,
                device: torch.device | None = None,
                dtype: torch.dtype | None = None):
     super().__init__()
@@ -266,12 +265,7 @@ class CausalMultiHeadSelfAttention(torch.nn.Module):
     torch.nn.init.trunc_normal_(self.W_V, 0, stddev, -3 * stddev, 3 * stddev)
     torch.nn.init.trunc_normal_(self.W_O, 0, stddev, -3 * stddev, 3 * stddev)
     
-    self.rope = RotaryPositionalEmbedding(
-      theta,
-      self.d_k,
-      max_seq_len,
-      self.device
-    )
+    self.rope = rope
     
   def forward(self, x: torch.Tensor, token_positions: torch.Tensor | None = None) -> torch.Tensor:
     Q = x @ self.W_Q.transpose(-1, -2)
@@ -284,7 +278,7 @@ class CausalMultiHeadSelfAttention(torch.nn.Module):
     K = K.reshape(*K.shape[:2], self.num_heads, -1).transpose(1, 2)
     V = V.reshape(*V.shape[:2], self.num_heads, -1).transpose(1, 2)
     
-    if token_positions is not None:
+    if token_positions is not None and self.rope is not None:
       Q = self.rope(Q, token_positions.unsqueeze(1))
       K = self.rope(K, token_positions.unsqueeze(1))
     
@@ -299,3 +293,24 @@ class CausalMultiHeadSelfAttention(torch.nn.Module):
     attention_vals = attention_vals.reshape(*attention_vals.shape[:2], -1)
     
     return attention_vals @ self.W_O.transpose(-1, -2)
+  
+  
+class TransformerBlock(torch.nn.Module):
+  def __init__(self,
+                d_model: int,
+                num_heads: int,
+                d_ff: int,
+                rope: RotaryPositionalEmbedding | None = None):
+    super().__init__()
+    
+    self.rms1 = RMSNorm(d_model)
+    self.rms2 = RMSNorm(d_model)
+    self.attention = CausalMultiHeadSelfAttention(
+      d_model, num_heads, rope
+    )
+    self.ffn = FeedForward(d_model, d_ff)
+    
+  def forward(self, x: torch.Tensor, token_ids: torch.Tensor | None = None):
+    y = x + self.attention(self.rms1(x), token_ids)
+    z = y + self.ffn(self.rms2(y))
+    return z
