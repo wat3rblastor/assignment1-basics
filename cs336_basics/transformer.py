@@ -145,16 +145,33 @@ class RotaryPositionalEmbedding(torch.nn.Module):
     i = torch.arange(max_seq_len, device=device).unsqueeze(1)
     k = torch.arange(d_k // 2, device=device).unsqueeze(0)
     
-    angle = i / (theta ** (k / d_k))
+    angle = i / (theta ** (2 * k / d_k))
     
     sin = torch.sin(angle)
     cos = torch.cos(angle)
+    
+    self.sin_buffer: torch.Tensor
+    self.cos_buffer: torch.Tensor
     
     self.register_buffer("sin_buffer", sin, persistent=False)
     self.register_buffer("cos_buffer", cos, persistent=False)
   
   def forward(self, x: torch.Tensor, token_positions: torch.Tensor) -> torch.Tensor:
-    raise NotImplementedError
+    sin = self.sin_buffer[token_positions]
+    cos = self.cos_buffer[token_positions] # (..., seq_len, d_k // 2)
+    
+    x_even = x[..., 0::2]
+    x_odd = x[..., 1::2]
+    
+    x_rot_even = cos * x_even - sin * x_odd
+    x_rot_odd = sin * x_even + cos * x_odd
+    
+    x_out = torch.empty_like(x)
+    
+    x_out[..., ::2] = x_rot_even
+    x_out[..., 1::2] = x_rot_odd
+  
+    return x_out
   
   
 def softmax(x: torch.Tensor, dim: int) -> torch.Tensor:
